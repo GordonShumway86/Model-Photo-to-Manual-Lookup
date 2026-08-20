@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>Equipment Manual Finder</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+  :root {
+    --bg: #111827;
+    --panel: #1f2937;
+    --border: #374151;
+    --text: #ffffff;
+    --text-dim: #9ca3af;
+    --text-faint: #6b7280;
+    --yellow: #facc15;
+    --yellow-soft: #fde047;
+    --blue: #2563eb;
+    --blue-active: #1d4ed8;
+    --blue-accent: #60a5fa;
+    --emerald: #059669;
+    --emerald-active: #10b981;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 16px 40px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--blue-accent);
+    margin: 8px 0 16px;
+  }
+
+  .camera-box {
+    position: relative;
+    width: 100%;
+    max-width: 28rem;
+    aspect-ratio: 4 / 3;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  }
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .reticle {
+    position: absolute;
+    inset: 40px 32px;
+    border: 2px dashed rgba(250, 204, 21, 0.8);
+    border-radius: 8px;
+    background: rgba(250, 204, 21, 0.05);
+    pointer-events: none;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .reticle.scanning { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  @media (prefers-reduced-motion: reduce) {
+    .reticle.scanning { animation: none; }
+  }
+
+  .reticle-label {
+    color: var(--yellow-soft);
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 4px 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+
+  .corner {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-color: var(--yellow);
+    pointer-events: none;
+  }
+  .corner-tl { top: 12px; left: 12px; border-top: 2px solid; border-left: 2px solid; }
+  .corner-tr { top: 12px; right: 12px; border-top: 2px solid; border-right: 2px solid; }
+  .corner-bl { bottom: 12px; left: 12px; border-bottom: 2px solid; border-left: 2px solid; }
+  .corner-br { bottom: 12px; right: 12px; border-bottom: 2px solid; border-right: 2px solid; }
+
+  .camera-overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(0, 0, 0, 0.85);
+    text-align: center;
+    padding: 0 24px;
+  }
+  .camera-overlay.visible { display: flex; }
+  .camera-overlay p { font-size: 0.875rem; color: #e5e7eb; margin: 0; }
+
+  button {
+    font-family: inherit;
+    border: none;
+    cursor: pointer;
+    color: var(--text);
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:disabled { opacity: 0.5; pointer-events: none; }
+  button:focus-visible, input:focus-visible {
+    outline: 3px solid var(--yellow);
+    outline-offset: 2px;
+  }
+
+  .btn-retry {
+    background: var(--yellow);
+    color: #111827;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+  }
+
+  .action-row {
+    width: 100%;
+    max-width: 28rem;
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 8px;
+  }
+
+  .btn-capture {
+    background: var(--blue);
+    font-weight: 700;
+    padding: 14px;
+    border-radius: 12px;
+    font-size: 1.125rem;
+    box-shadow: 0 10px 25px -8px rgba(23, 37, 84, 0.5);
+  }
+  .btn-capture:active:not(:disabled) { background: var(--blue-active); }
+
+  .btn-upload {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 0.875rem;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn-upload:active:not(:disabled) { background: var(--border); }
+
+  .icon { width: 16px; height: 16px; flex-shrink: 0; }
+
+  .status-line {
+    font-size: 0.75rem;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    color: var(--yellow);
+    margin-top: 12px;
+    min-height: 20px;
+    text-align: center;
+  }
+
+  .panel {
+    width: 100%;
+    max-width: 28rem;
+    margin-top: 8px;
+  }
+  .panel > * + * { margin-top: 12px; }
+
+  label, .search-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+
+  input[type="text"] {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 1rem;
+    letter-spacing: 0.02em;
+  }
+  input[type="text"]:focus { outline: none; }
+
+  .search-btn--google {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    background: var(--emerald);
+    color: #fff;
+    margin-top: 8px;
+  }
+  .search-btn--google:active:not(:disabled) { background: var(--emerald-active); }
+
+  .results-list {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0;
+  }
+  .results-list li {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .results-list a {
+    color: var(--blue-accent);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 600;
+    word-break: break-word;
+  }
+  .results-list a:hover { text-decoration: underline; }
+
+  .footer-note {
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    text-align: center;
+    margin-top: 12px;
+  }
+
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+  <h1>Equipment Manual Finder</h1>
+
+  <!-- Camera View -->
+  <div id="camera-wrap" class="camera-box">
+    <video id="webcam" autoplay playsinline webkit-playsinline muted></video>
+
+    <div id="reticle" class="reticle">
+      <span class="reticle-label">Align model / serial plate here</span>
+    </div>
+    <div class="corner corner-tl" aria-hidden="true"></div>
+    <div class="corner corner-tr" aria-hidden="true"></div>
+    <div class="corner corner-bl" aria-hidden="true"></div>
+    <div class="corner corner-br" aria-hidden="true"></div>
+
+    <div id="camera-overlay" class="camera-overlay">
+      <p id="camera-overlay-text"></p>
+      <button id="camera-retry" class="btn-retry">Try Again</button>
+    </div>
+  </div>
+
+  <!-- Capture & Local Photo Input -->
+  <div class="action-row">
+    <button id="capture-btn" class="btn-capture">Scan Model Plate</button>
+    <button id="upload-btn" class="btn-upload" type="button" onclick="document.getElementById('file-input').click()" aria-describedby="status">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+        <circle cx="9" cy="9" r="2"></circle>
+        <path d="M21 15l-5-5L5 21"></path>
+      </svg>
+      Photo
+    </button>
+    <input type="file" id="file-input" accept="image/*" class="hidden" />
+  </div>
+
+  <div id="status" class="status-line" role="status" aria-live="polite">Starting camera…</div>
+
+  <!-- Output Controls & Scraped Manual Results -->
+  <div class="panel">
+    <div>
+      <label for="ocr-output">Model / serial number (edit if needed):</label>
+      <input
+        type="text"
+        id="ocr-output"
+        inputmode="text"
+        autocomplete="off"
+        autocapitalize="characters"
+        placeholder="Scanned text will appear here"
+      />
+    </div>
+
+    <div>
+      <span class="search-label">Found Manual Links:</span>
+      <ul id="results-list" class="results-list"></ul>
+      
+      <button id="google-fallback-btn" class="search-btn--google" disabled>Fallback: Open Google PDF Search</button>
+    </div>
+
+    <p class="footer-note">Runs 100% locally on your device — no images or data are uploaded.</p>
+  </div>
+
+  <canvas id="proc-canvas" class="hidden"></canvas>
+  <script src="app.js"></script>
+</body>
+</html>
