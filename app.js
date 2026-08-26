@@ -6,25 +6,80 @@ const ocrOutput = document.getElementById('ocr-output');
 const status = document.getElementById('status');
 const fileInput = document.getElementById('file-input');
 const googleFallbackBtn = document.getElementById('google-fallback-btn');
+const reticle = document.getElementById('reticle');
+const cameraOverlay = document.getElementById('camera-overlay');
+const cameraOverlayText = document.getElementById('camera-overlay-text');
+const cameraRetryBtn = document.getElementById('camera-retry');
+
+let cameraReady = false;
+let ocrReady = false;
+
+function updateCaptureAvailability() {
+  captureBtn.disabled = !(cameraReady && ocrReady);
+  reticle.classList.toggle('scanning', cameraReady && ocrReady);
+  if (cameraReady && ocrReady) {
+    status.innerText = 'Ready to Scan';
+  } else if (cameraReady && !ocrReady) {
+    status.innerText = 'Camera ready — loading OCR engine…';
+  } else if (!cameraReady && ocrReady) {
+    status.innerText = 'OCR ready — waiting on camera…';
+  }
+}
+
+function showCameraOverlay(message) {
+  cameraOverlayText.innerText = message;
+  cameraOverlay.classList.add('visible');
+}
+
+function hideCameraOverlay() {
+  cameraOverlay.classList.remove('visible');
+}
 
 async function initCamera() {
+  cameraReady = false;
+  updateCaptureAvailability();
+  hideCameraOverlay();
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    const msg = 'Camera requires a secure connection (https://) or localhost. Open this page over HTTPS to use the camera, or use the Photo button instead.';
+    status.innerText = msg;
+    showCameraOverlay(msg);
+    return;
+  }
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { max: 1920 }, height: { max: 1080 } }
     });
     video.srcObject = stream;
+    try {
+      await video.play();
+    } catch (playErr) {
+      // Some browsers require this even with the autoplay attribute set.
+    }
+    await new Promise((resolve) => {
+      if (video.readyState >= 2 && video.videoWidth > 0) return resolve();
+      video.onloadedmetadata = () => resolve();
+      setTimeout(resolve, 1500);
+    });
+    cameraReady = true;
+    updateCaptureAvailability();
   } catch (err) {
-    status.innerText = "Camera access error: " + err.message;
+    const msg = 'Camera access error: ' + err.message;
+    status.innerText = msg;
+    showCameraOverlay(msg);
+    updateCaptureAvailability();
   }
 }
 
 async function initOCR() {
-  status.innerText = "Loading OCR Engine...";
+  status.innerText = 'Loading OCR Engine...';
   try {
     worker = await Tesseract.createWorker('eng');
-    status.innerText = "Ready to Scan";
+    ocrReady = true;
+    updateCaptureAvailability();
   } catch (e) {
-    status.innerText = "OCR Engine Failed.";
+    status.innerText = 'OCR Engine Failed: ' + e.message;
   }
 }
 
@@ -111,7 +166,7 @@ async function processImage(imageSource) {
 }
 
 captureBtn.addEventListener('click', () => {
-  if (!worker) return;
+  if (!worker || !cameraReady) return;
   processImage(video);
 });
 
@@ -132,6 +187,13 @@ if (googleFallbackBtn) {
     const q = encodeURIComponent(ocrOutput.value.trim());
     if (!q) return;
     window.open(`https://www.google.com/search?q=${q}+manual+filetype:pdf`, '_blank');
+  });
+}
+
+if (cameraRetryBtn) {
+  cameraRetryBtn.addEventListener('click', () => {
+    status.innerText = 'Starting camera…';
+    initCamera();
   });
 }
 
