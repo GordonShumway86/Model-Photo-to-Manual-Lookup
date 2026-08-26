@@ -6,6 +6,7 @@ const ocrOutput = document.getElementById('ocr-output');
 const status = document.getElementById('status');
 const fileInput = document.getElementById('file-input');
 const googleFallbackBtn = document.getElementById('google-fallback-btn');
+const resultsList = document.getElementById('results-list');
 const reticle = document.getElementById('reticle');
 const cameraOverlay = document.getElementById('camera-overlay');
 const cameraOverlayText = document.getElementById('camera-overlay-text');
@@ -13,6 +14,34 @@ const cameraRetryBtn = document.getElementById('camera-retry');
 
 let cameraReady = false;
 let ocrReady = false;
+
+// Verified public HVAC manual providers
+const MANUAL_PROVIDERS = [
+  {
+    name: "Trane Product Data",
+    getUrl: (model) => `https://www.trane.com/residential/en/resources/owners-guides/?q=${encodeURIComponent(model)}`
+  },
+  {
+    name: "Carrier Literature Search",
+    getUrl: (model) => `https://www.carrier.com/residential/en/us/technical-support/manuals/?q=${encodeURIComponent(model)}`
+  },
+  {
+    name: "Lennox Technical Documents",
+    getUrl: (model) => `https://www.lennox.com/support/manuals-and-specifications?q=${encodeURIComponent(model)}`
+  },
+  {
+    name: "InspectAPedia HVAC Repository",
+    getUrl: (model) => `https://www.google.com/search?q=site:inspectapedia.com+${encodeURIComponent(model)}+manual+filetype:pdf`
+  },
+  {
+    name: "ManualsLib PDF Direct Search",
+    getUrl: (model) => `https://www.manualslib.com/search.html?q=${encodeURIComponent(model)}`
+  },
+  {
+    name: "SupplyHouse Product Specs & Manuals",
+    getUrl: (model) => `https://www.supplyhouse.com/sh/control/search/~SEARCH_STRING=${encodeURIComponent(model)}`
+  }
+];
 
 function updateCaptureAvailability() {
   captureBtn.disabled = !(cameraReady && ocrReady);
@@ -114,6 +143,27 @@ function extractModelNumber(rawText) {
   return text.replace(/[^A-Z0-9\s-]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Renders one link per provider inside the existing results-list panel,
+ * using the page's own styling instead of inline styles.
+ */
+function renderManualLinks(modelNumber) {
+  resultsList.innerHTML = '';
+
+  if (!modelNumber) return;
+
+  MANUAL_PROVIDERS.forEach(provider => {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.href = provider.getUrl(modelNumber);
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.innerText = provider.name;
+    li.appendChild(a);
+    resultsList.appendChild(li);
+  });
+}
+
 async function processImage(imageSource) {
   status.innerText = "Processing Image...";
   const ctx = canvas.getContext('2d');
@@ -157,6 +207,7 @@ async function processImage(imageSource) {
     if (detectedModel.length > 0) {
       status.innerText = "Scan Complete.";
       if (googleFallbackBtn) googleFallbackBtn.disabled = false;
+      renderManualLinks(detectedModel);
     } else {
       status.innerText = "No valid model number found. Try aligning closer.";
     }
