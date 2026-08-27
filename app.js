@@ -125,22 +125,8 @@ function extractModelNumber(rawText) {
     return prefixMatch[1].trim();
   }
 
-  // Pattern 2: Target typical HVAC/appliance model strings (mixed letters & digits, length 5-18)
-  const tokens = text.split(/\s+/);
-  const candidates = tokens.filter(token => {
-    const cleaned = token.replace(/[^A-Z0-9-]/g, '');
-    const hasLetter = /[A-Z]/.test(cleaned);
-    const hasDigit = /[0-9]/.test(cleaned);
-    return hasLetter && hasDigit && cleaned.length >= 5 && cleaned.length <= 18;
-  });
-
-  if (candidates.length > 0) {
-    // Return the longest candidate match as the primary model string
-    return candidates.reduce((a, b) => a.length >= b.length ? a : b).replace(/[^A-Z0-9-]/g, '');
-  }
-
-  // Fallback: Return raw cleaned text if no model pattern was identified
-  return text.replace(/[^A-Z0-9\s-]/g, '').replace(/\s+/g, ' ').trim();
+  // No "MODEL"-style label found — don't guess from noise, report nothing.
+  return '';
 }
 
 /**
